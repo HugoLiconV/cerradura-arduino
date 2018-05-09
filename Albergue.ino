@@ -6,9 +6,24 @@
 #include <SPI.h>
 #include <MFRC522.h>
 
+//Ethernet includes
+#include <Ethernet.h>
+#include <SPI.h>
+#include <ArduinoJson.h>
+
+// Ethernet Variables
+byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
+
+const char* host = "albergue-api.herokuapp.com";
+
+IPAddress ip(192, 168, 1, 177);
+
+EthernetClient client;
+String result;
+
 //RFID Configuration
 #define RST_PIN  9    //Pin 9 para el reset del RC522
-#define SS_PIN  53   //Pin 10 para el SS (SDA) del RC522
+#define SS_PIN  53   //Pin 53 para el SS (SDA) del RC522
 MFRC522 mfrc522(SS_PIN, RST_PIN); ///Creamos el objeto para el RC522
 
 typedef struct {
@@ -44,18 +59,18 @@ Keypad keypad = Keypad( makeKeymap(keys), rowPins, colPins, ROWS, COLS );
 
 void setup() {
   Serial.begin(9600);
+  EthernetConnection();
   pinMode(ledCorrect, OUTPUT);
   pinMode(ledIncorrect, OUTPUT);
   pinMode(ledStatus, OUTPUT);
- 
+  pinMode(LED_BUILTIN, OUTPUT);
+  
   personas[0] = Persona{ "1234", "Juan Perez" };
   personas[1] = Persona{ "4321", "Hugo Licon" };
 
   //RFID
   SPI.begin();        //Iniciamos el Bus SPI
-  mfrc522.PCD_Init(); // Iniciamos el MFRC522
-    // initialize digital pin LED_BUILTIN as an output.
-  pinMode(LED_BUILTIN, OUTPUT);
+  mfrc522.PCD_Init(); // Iniciamos el MFRC522  
 }
 
 void loop() {
@@ -72,6 +87,7 @@ void loop() {
       digitalWrite(ledStatus, LOW);
       if (loggedUser.nombre.length() > 0) {
         Serial.println("Iniciando Sesion");
+        postRegister();
         print("Hola " + loggedUser.nombre);
         digitalWrite(ledCorrect, HIGH);   // turn the LED on (HIGH is the voltage level)
         delay(2000);
@@ -102,6 +118,7 @@ void loop() {
         if (compareArray(ActualUID, Usuario1)) {
           Serial.println("Acceso concedido...");
           digitalWrite(LED_BUILTIN, HIGH);
+          postRegister();
           delay(5000);
           digitalWrite(LED_BUILTIN, HIGH);
         }
@@ -114,7 +131,6 @@ void loop() {
         }
         else
           Serial.println("Acceso denegado...");
-
         // Terminamos la lectura de la tarjeta tarjeta  actual
         mfrc522.PICC_HaltA();
 
@@ -177,3 +193,61 @@ void print(String text) {
   Serial.println(text);
 }
 
+void postRegister(){
+  char data[]="{\"userId\": 1}";
+  Serial.print("\n[Connecting to  ... ");
+  Serial.println(host);
+  if (client.connect(host, 80))
+  {
+    Serial.println("connected");
+    Serial.println("[Sending a request]");
+    client.println("POST /registros HTTP/1.1");
+    client.println("Host: albergue-api.herokuapp.com");
+    client.println("User-Agent: arduino/1.8.3");
+    client.println("Content-Type: application/json");
+    client.print("Content-Length: ");
+    client.println(strlen(data));
+    client.println("Connection: close");
+    client.println();
+    client.print(data);
+
+    Serial.println("[Response:]");
+    while (client.connected())
+    {
+      if (client.available())
+      {
+        String line = client.readStringUntil('\n');
+        Serial.println(line);
+      }
+    }
+  }
+  else
+  {
+    Serial.println("Cannot connect to Server");
+    Serial.println();
+  }
+
+
+  while (client.connected() && !client.available()) delay(1); //waits for data
+  while (client.connected() || client.available())
+  { //connected or data available
+    char c = client.read(); //gets byte from ethernet buffer
+    result = result + c;
+  }
+  client.stop(); //stop client
+  Serial.println("\n[Disconnected]");
+  result.replace('[', ' ');
+  result.replace(']', ' ');
+  Serial.println(result);
+}
+
+void EthernetConnection(){
+  if (Ethernet.begin(mac) == 0) {
+    Serial.println("Failed to configure Ethernet using DHCP");
+    // try to congifure using IP address instead of DHCP:
+    Ethernet.begin(mac, ip);
+  }
+  Serial.println("connected");
+  Serial.println(Ethernet.localIP());
+  delay(1000);
+}
