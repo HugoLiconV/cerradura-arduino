@@ -4,9 +4,19 @@
 
 //RFID includes
 #include <SPI.h>
-#include <MFRC522.h>
-#define RST_PIN  9    //Pin 9 para el reset del RC522
-#define SS_PIN  53   //Pin 53 para el SS (SDA) del RC522
+//#include <MFRC522.h>
+#include <RFID.h>
+
+//#define RST_PIN  9    //Pin 9 para el reset del RC522
+//#define SS_PIN  53   //Pin 53 para el SS (SDA) del RC522
+
+#define SDA_DIO 53
+#define RESET_DIO 9
+
+RFID RC522(SDA_DIO, RESET_DIO);
+
+const String usuario1 = "180220171138";
+const String usuario2 = "852463116626";
 
 //Ethernet includes
 #include <Ethernet.h>
@@ -26,7 +36,7 @@ const IPAddress ip(192, 168, 1, 177);
 EthernetClient client;
 
 /* RFID Configuration */
-MFRC522 mfrc522(SS_PIN, RST_PIN); ///Creamos el objeto para el RC522
+//MFRC522 mfrc522(SS_PIN, RST_PIN); ///Creamos el objeto para el RC522
 
 /* RFID Variables */
 byte ActualUID[4]; //almacenará el código del Tag leído
@@ -53,9 +63,12 @@ const byte ROW_PINS[ROWS] = {22, 24, 26, 28}; //connect to the row pinouts of th
 const byte COL_PINS[COLS] = {30, 32, 34, 36}; //connect to the column pinouts of the keypad
 
 Keypad keypad = Keypad( makeKeymap(NUMPAD_KEYS), ROW_PINS, COL_PINS, ROWS, COLS );
-
 void setup() {
   Serial.begin(9600);
+  //RFID
+  SPI.begin();
+  //  mfrc522.PCD_Init();
+  RC522.init();
   EthernetConnection();
   pinMode(CORRECT_LED, OUTPUT);
   pinMode(INCORRECT_LED, OUTPUT);
@@ -64,15 +77,11 @@ void setup() {
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, HIGH);
 
-  //RFID
-  SPI.begin();
-  mfrc522.PCD_Init();
+  Serial.println("Presione A para escribir código o B para usar tarjeta");
 }
 
 void loop() {
-  Serial.println("Presione A para escribir código");
   while (true) {
-    Serial.print(".");
     char key = keypad.getKey();
     if (key == 'A') {
       Serial.println("Ingrese código y presione D para finalizar");
@@ -98,33 +107,47 @@ void loop() {
         delay(2000);
         digitalWrite(INCORRECT_LED, LOW);
       }
-    } else if ( mfrc522.PICC_IsNewCardPresent()) {
-      bool isUnlock = false;
-      Serial.println("PICC_IsNewCardPresent");
-      //Seleccionamos una tarjeta
-      if ( mfrc522.PICC_ReadCardSerial()) {
-        // Enviamos serialemente su UID
-        Serial.println("Reading card...");
-        Serial.print(F("Card UID:"));
-        for (byte i = 0; i < mfrc522.uid.size; i++) {
-          Serial.print(mfrc522.uid.uidByte[i] < 0x10 ? " 0" : " ");
-          Serial.print(mfrc522.uid.uidByte[i], HEX);
-          ActualUID[i] = mfrc522.uid.uidByte[i];
-        }
-        Serial.print("     ");
-        //comparamos los UID para determinar si es uno de nuestros usuarios
-        if (compareArray(ActualUID, Usuario1) || compareArray(ActualUID, Usuario2)) {
-          Serial.println("Acceso concedido...");
-          isUnlock = true;
-        } else {
-          Serial.println("Acceso denegado...");
-        }
-        // Terminamos la lectura de la tarjeta tarjeta  actual
-        mfrc522.PICC_HaltA();
-        if (unlock) {
-          digitalWrite(CORRECT_LED, HIGH);
-          unlock();
-          digitalWrite(CORRECT_LED, LOW);
+    } else if (key == 'B') {
+      Serial.println("Esperando Tarjeta...");
+      bool foundCard = false;
+      while (!foundCard) {
+        //        if ( mfrc522.PICC_IsNewCardPresent()) {
+        //        Serial.println("PICC_IsNewCardPresent");
+        //Seleccionamos una tarjeta
+        //          if ( mfrc522.PICC_ReadCardSerial()) {
+        if (RC522.isCard()) {
+          // Enviamos serialemente su UID
+          String newCard = "";
+          Serial.println("Reading card...");
+          RC522.readCardSerial();
+          Serial.print(F("Card UID:"));
+          //            for (byte i = 0; i < mfrc522.uid.size; i++) {
+          //              Serial.print(mfrc522.uid.uidByte[i] < 0x10 ? " 0" : " ");
+          //              Serial.print(mfrc522.uid.uidByte[i], HEX);
+          //              ActualUID[i] = mfrc522.uid.uidByte[i];
+          //            }
+          for (int i = 0; i < 5; i++)
+          {
+            //      Serial.println(RC522.serNum[i], DEC);
+            newCard += RC522.serNum[i];
+            //Serial.print(RC522.serNum[i],HEX); //to print card detail in Hexa Decimal format
+          }
+          Serial.print("     ");
+          Serial.print(newCard);
+          //comparamos los UID para determinar si es uno de nuestros usuarios
+          //            if (compareArray(ActualUID, Usuario1) || compareArray(ActualUID, Usuario2)) {
+          if (newCard.equals(usuario1) || newCard.equals(usuario2)) {
+            digitalWrite(CORRECT_LED, HIGH);
+            unlock();
+            digitalWrite(CORRECT_LED, LOW);
+          } else {
+            Serial.println("Acceso denegado...");
+          }
+          // Terminamos la lectura de la tarjeta tarjeta  actual
+          //            mfrc522.PICC_HaltA();
+          if (newCard.length() == usuario1.length()) {
+            foundCard = true;
+          }
         }
       }
     }
@@ -255,8 +278,8 @@ void EthernetConnection() {
 void unlock()
 {
   digitalWrite(RELAY_PIN, LOW);
-  Serial.println("Abierto");
-  delay(1000);
+  Serial.println("\nAbierto");
+  delay(2000);
   digitalWrite(RELAY_PIN, HIGH);
   Serial.println("Cerrada");
 }
