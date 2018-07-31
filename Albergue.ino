@@ -4,19 +4,12 @@
 
 //RFID includes
 #include <SPI.h>
-//#include <MFRC522.h>
 #include <RFID.h>
-
-//#define RST_PIN  9    //Pin 9 para el reset del RC522
-//#define SS_PIN  53   //Pin 53 para el SS (SDA) del RC522
 
 #define SDA_DIO 53
 #define RESET_DIO 9
 
 RFID RC522(SDA_DIO, RESET_DIO);
-
-const String usuario1 = "180220171138";
-const String usuario2 = "852463116626";
 
 //Ethernet includes
 #include <Ethernet.h>
@@ -35,15 +28,11 @@ const IPAddress ip(192, 168, 1, 177);
 
 EthernetClient client;
 
-/* RFID Configuration */
-//MFRC522 mfrc522(SS_PIN, RST_PIN); ///Creamos el objeto para el RC522
-
-/* RFID Variables */
-byte ActualUID[4]; //almacenará el código del Tag leído
-
 /* RFID Users */
-const byte Usuario1[4] = {0xB4, 0xDC, 0x11, 0x71} ; //código del usuario 1
-const byte Usuario2[4] = {0x55, 0xF6, 0x1F, 0xA6} ; //código del usuario 2
+//const byte Usuario1[4] = {0xB4, 0xDC, 0x11, 0x71} ; //código del usuario 1
+//const byte Usuario2[4] = {0x55, 0xF6, 0x1F, 0xA6} ; //código del usuario 2
+const String usuario1 = "180220171138";
+const String usuario2 = "852463116626";
 
 /* Status LEDs Variables */
 const int CORRECT_LED = 38;
@@ -67,8 +56,8 @@ void setup() {
   Serial.begin(9600);
   //RFID
   SPI.begin();
-  //  mfrc522.PCD_Init();
   RC522.init();
+
   EthernetConnection();
   pinMode(CORRECT_LED, OUTPUT);
   pinMode(INCORRECT_LED, OUTPUT);
@@ -76,11 +65,10 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, HIGH);
-
-  Serial.println("Presione A para escribir código o B para usar tarjeta");
 }
 
 void loop() {
+  Serial.println("Presione A para escribir código o B para usar tarjeta");
   while (true) {
     char key = keypad.getKey();
     if (key == 'A') {
@@ -107,67 +95,28 @@ void loop() {
         delay(2000);
         digitalWrite(INCORRECT_LED, LOW);
       }
-    } else if (key == 'B') {
-      Serial.println("Esperando Tarjeta...");
-      bool foundCard = false;
-      while (!foundCard) {
-        //        if ( mfrc522.PICC_IsNewCardPresent()) {
-        //        Serial.println("PICC_IsNewCardPresent");
-        //Seleccionamos una tarjeta
-        //          if ( mfrc522.PICC_ReadCardSerial()) {
-        if (RC522.isCard()) {
-          // Enviamos serialemente su UID
-          String newCard = "";
-          Serial.println("Reading card...");
-          RC522.readCardSerial();
-          Serial.print(F("Card UID:"));
-          //            for (byte i = 0; i < mfrc522.uid.size; i++) {
-          //              Serial.print(mfrc522.uid.uidByte[i] < 0x10 ? " 0" : " ");
-          //              Serial.print(mfrc522.uid.uidByte[i], HEX);
-          //              ActualUID[i] = mfrc522.uid.uidByte[i];
-          //            }
-          for (int i = 0; i < 5; i++)
-          {
-            //      Serial.println(RC522.serNum[i], DEC);
-            newCard += RC522.serNum[i];
-            //Serial.print(RC522.serNum[i],HEX); //to print card detail in Hexa Decimal format
-          }
-          Serial.print("     ");
-          Serial.print(newCard);
-          //comparamos los UID para determinar si es uno de nuestros usuarios
-          //            if (compareArray(ActualUID, Usuario1) || compareArray(ActualUID, Usuario2)) {
-          if (newCard.equals(usuario1) || newCard.equals(usuario2)) {
-            digitalWrite(CORRECT_LED, HIGH);
-            unlock();
-            digitalWrite(CORRECT_LED, LOW);
-          } else {
-            Serial.println("Acceso denegado...");
-          }
-          // Terminamos la lectura de la tarjeta tarjeta  actual
-          //            mfrc522.PICC_HaltA();
-          if (newCard.length() == usuario1.length()) {
-            foundCard = true;
-          }
-        }
+    }
+    if (RC522.isCard()) {
+      String newCard = "";
+      Serial.println("Reading card...");
+      RC522.readCardSerial();
+      Serial.print(("Card UID:"));
+      for (int i = 0; i < 5; i++) {
+        newCard += RC522.serNum[i];
+      }
+      Serial.print("     ");
+      Serial.print(newCard);
+
+      bool canAccess = newCard.equals(usuario1) || newCard.equals(usuario2); 
+      if (canAccess) {
+        digitalWrite(CORRECT_LED, HIGH);
+        unlock();
+        digitalWrite(CORRECT_LED, LOW);
+      } else if (!canAccess && newCard.length() == usuario1.length()){
+        Serial.println("Acceso denegado...");
       }
     }
   }
-}
-
-/**
-  Compara los arrays con los ID de las tarjetas
-
-  @param array1 Primer arreglo para comparar
-  @param array2 Segundo arreglo para comparar
-  @return Boolean true si ambos arreglos son iguales, false si no lo son.
-*/
-boolean compareArray(byte array1[], byte array2[])
-{
-  if (array1[0] != array2[0])return (false);
-  if (array1[1] != array2[1])return (false);
-  if (array1[2] != array2[2])return (false);
-  if (array1[3] != array2[3])return (false);
-  return (true);
 }
 
 /**
